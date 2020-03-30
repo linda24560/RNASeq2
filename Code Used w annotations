@@ -1,0 +1,563 @@
+#BiocManager::install("DESeq2") #installs DESeq2 BiocManager
+#BiocManager::install("ggplot2") #Installs ggplot2 from BiocManager
+#install.packages("ggrepel") #Installs ggrepel
+#install.packages("gridExtra") #Installs gridExtra
+#BiocManager::install("factoextra") #Installs factoExtra
+#install.packages("plotly") #installs plotly
+#install.packages("plyr") #installs plyr
+#install.packages("dplyr") #instlls dplyr
+#install.packages("tidyr") #installs tidyr
+#install.packages("RColorBrewer") #installs RColorBrewer
+#install.packages("pheatmap") #installs pheatmap
+#BiocManager::install("org.Dm.eg.db") #installs org.Dm.eg.db
+#install.packages("MetaCycle") #installs MetaCycle
+#BiocManager::install("pcaExplorer") #pcaExplorer
+
+library(DESeq2) #for differential expression analysis
+library(ggplot2) #for 2D graph
+library(ggrepel) #to get the names in ggplot graph 
+library(gridExtra) #to arrange the plots
+library(factoextra) #extra plots
+library(plotly) #for 3D graphics
+library(plyr) #table manipulation
+library(dplyr)#table manipulation
+library(tidyr)#table manipulation
+library("RColorBrewer") #extra color palettes
+library("pheatmap") #nice heatmaps
+library(org.Dm.eg.db) #get annotation
+library(MetaCycle) # to identify cycling genes, the successor of JTK according to JTK authors
+library(pcaExplorer) #more PCA analysis
+
+list.files() #list files in working directory
+list.files(pattern = "expression") #list files in working directory with expression in the name. 
+
+paper_tables<-list.files(pattern = "expression") #creating new object "paper_tables" that will hold the list of the files with expression in the title
+TH_gene_expression<-read.table("TH_gene_expression.txt",header = T) #creates data table that contains data from TH gene expression.txt.
+gsub(x = "TH_gene_expression.txt",pattern =".txt",  replacement = "") #changes the name of TH_gene_expression.txt to remove .txt and replace with empty string. 
+
+for (e in (paper_tables)){  #for loop for changing the names for all the files to remove the .txt part
+  print("original name:          ")  #prints "original name: Used as divider
+  print(e) # this is printing e
+  n<-gsub(pattern =".txt",  replacement = "",x = e)  #replaces .txt with nothing. 
+  print("final name:        ")  #prints "final name:" used as divider. 
+  print(n)  #prints the final name itself. This was all a test to make sure it works. Doesn't actually change anything yet. 
+}
+
+for (e in (paper_tables)){  #for loop that will actually make the changes to the names. 
+  n<-gsub(pattern =".txt",  replacement = "",x = e) #replaces the .txt with nothing. 
+  print(paste0("I am reading: ",n)) #prints the new name. 
+  assign(n,read.delim(e)) #assigns tables to the given names that are stored in n. the "read.delim" stored in e is assigned to the names in n
+}
+
+ds2_DN1_gene_expression_try<-DN1_gene_expression #creates new object with the same data from DN1 gene expression so we can modify the data without overwriting the raw data.
+ls(pattern = "gene_expression") #this lists the objects in the environment that the selected pattern (gene expression). 
+paste0("ds2_","DN1_gene_expression") #adds ds2 to the beginning of the object name for DN1 gene_expression
+
+for (e in ls(pattern = "gene_expression")){  #loop pattern for adding ds2 to each of the object names stored in e. 
+  x = paste0("ds2", sep="_",e) #this is the new name
+  print("new name is:") #prints what the new name is. 
+  print(x) 
+  assign(x, get(e)) #get is a function that extracts the data from an object name. Assigns new name to the tables. 
+}
+
+ds2_DN1_gene_expression_try <- ds2_DN1_gene_expression # creates object "ds2_DN1_gene_expression_try" with data from  ds2_DN1_gene_expression so we can manipulate it without changing the raw data
+row.names(ds2_DN1_gene_expression_try) = ds2_DN1_gene_expression$Symbol # we put the symbols as row.names
+ds2_DN1_gene_expression_try<-ds2_DN1_gene_expression_try[,-1] # removes symbols columns. 
+head(ds2_DN1_gene_expression_try) # we can see that now the table is what we need. Prints the first couple rows of the table. 
+
+rm(ds2_DN1_gene_expression_try) #removes "ds2_DN1_gene_expression_try" becasue you do not need it anymore and because it can create problems
+########################################################################################################
+#We create a small function to remember
+sum2<-function(x){
+ y=x+2 
+ return(y)
+}
+
+sum2(4) #Created function y=x+2 and set it as object sum2 and then inputed 4 as x to return y as 6. This shows that we are able to manipulate data frames as objects and perform addition, subtraction, and other transformations  to them.
+#######################################################################################################
+
+#Now we create a function that takes the data frame and does all the transformation we did before
+create_ds2= function(df_name){
+  df = as.data.frame(get(df_name))
+  row.names(df) = as.character(df[,1])
+  df=df[,-1]
+  return(df) # this actually tells the function to return the transformed data.frame
+}
+
+#head(create_ds2(ds2_LNd_gene_expression))[,c(1:3)]
+for (e in ls(pattern = "ds2_")){ #performs the same function on one of the ds2 objects. 
+  print(e) #prints the reulsts of the function. 
+  assign(e,create_ds2(e)) #this should actually run the function and apply it to the data frame. 
+}
+#############################################################################################################################
+#######COLDATA PREPARATION#########################################
+#############################################################################################################################
+#Need data.frame wih mapping betwen columns and the ZT - need a colData to explain what each object/column is. 
+
+colData.DN1 = as.data.frame(names(ds2_DN1_gene_expression)) #takes the names in the data frame and put them in the new objects. We want to get the information for each 
+rownames(colData.DN1) = colData.DN1[,1] #now we put them as row.names
+colData.DN1 =colData.DN1[,-1] #now we take the columns out 
+colData.DN1$ZT = sapply(strsplit(rownames(colData.DN1),"_"),"[[",2) #this is taking the last part of the rownames and put them in a column named `ZT`
+head(colData.DN1) #prints the first couple rows of colData.DN1
+
+####REPEAT FOR LNv and LNd and TH
+colData.LNv = as.data.frame(names(ds2_LNv_gene_expression)) #creates new object with data frame. 
+rownames(colData.LNv) = colData.LNv[,1]#now we put them as row.names
+colData.LNv =colData.LNv[,-1]#now we take the columns out 
+colData.LNv$ZT = sapply(strsplit(rownames(colData.LNv),"_"),"[[",2)#this is taking the last part of the rownames and put them in a column named `ZT`
+colData.LNv$rep = sapply(strsplit(rownames(colData.LNv),"_"),"[[",3)
+head(colData.LNv) #prints the first couple rows of the colData
+
+colData.LNd = as.data.frame(names(ds2_LNd_gene_expression)) #creates new object with data frame. 
+rownames(colData.LNd) = colData.LNd[,1]#now we put them as row.names
+colData.LNd =colData.LNd[,-1]#now we take the columns out 
+colData.LNd$ZT = sapply(strsplit(rownames(colData.LNd),"_"),"[[",2)#this is taking the last part of the rownames and put them in a column named `ZT`
+colData.LNd$rep = sapply(strsplit(rownames(colData.LNd),"_"),"[[",3)
+head(colData.LNv)#prints the first couple rows of the colData
+
+colData.TH = as.data.frame(names(ds2_TH_gene_expression)) #creates new object with data frame. 
+rownames(colData.TH) = colData.TH[,1]#now we put them as row.names
+colData.TH =colData.TH[,-1]#now we take the columns out
+colData.TH$ZT = sapply(strsplit(rownames(colData.TH),"_"),"[[",2)#this is taking the last part of the rownames and put them in a column named `ZT`
+colData.TH$rep = sapply(strsplit(rownames(colData.TH),"_"),"[[",3)
+head(colData.LNv)#prints the first couple rows of the colData
+
+##################################################################################################
+##################################5. HEAT MAP PCA ANALYSIS##################################
+######################################################################################################
+
+dds.DN1 <- DESeqDataSetFromMatrix(countData = as.matrix(ds2_DN1_gene_expression), colData = colData.DN1,design = ~ ZT) #Creates new object dds.DNI This is actually the main function of the package and prepares everything to run the differential expression analysis.
+class(dds.DN1) #prints class of dds.DN1
+
+#We will create the heat map with the normalized counts
+sampleDists <- dist(t(assay(dds.DN1))) #creates distance matrix
+
+#Then we take this in a matrix and create the heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(dds.DN1$ZT,dds.DN1$rep,sep="_rep_")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+                  annotation_row = rownames(sampleDists),
+         annotation_col = rownames(sampleDists),
+         cutree_rows = 2,
+         cutree_cols = 2,
+         col=colors)
+
+rdl.DN1 <- rlog(dds.DN1) #transformation to see how the data looks like in terms of differences and if we should take any sample out.
+
+
+plotPCA(rdl.DN1, intgroup=c("ZT")) # plot the PCA analysis
+
+data <- plotPCA(rdl.DN1, intgroup=c("ZT"), returnData=TRUE) #taking the data out and using ggplot2 to replot it with labels. 
+percentVar <- round(100 * attr(data, "percentVar"))
+
+ggplot(data, aes(PC1, PC2, color=ZT,label=name)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = name),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()+
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  labs(title="PC1 vs PC2")
+
+
+ntop <- 1000 #We create 3D plots for all the PC
+rv <- rowVars(assay(rdl.DN1))
+select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+mat <- t(assay(rdl.DN1)[select, ])
+pc <- prcomp(mat)
+pc_df=as.data.frame(pc$x)
+pc_df=merge(pc_df,colData.DN1,by="row.names",all=T)
+rownames(pc_df)=pc_df$Row.names
+
+fviz_eig(pc, addlabels = TRUE) #This analyzes how much variation are we seeing in each PC
+
+p1=ggplot(pc_df, aes(PC1, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p1 #prints plot 1
+p2=ggplot(pc_df, aes(PC3, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p2 #prints plot 2
+
+grid.arrange(p1,p2, ncol=2) #rearranges the plots next to each other. 
+
+plot_ly(pc_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~ZT,colorscale = c('#FFE1A1', '#683531')) #creates 3D plot
+plot_ly(pc_df, x = ~PC2, y = ~PC3, z = ~PC4, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+
+###Repeats for LNv and LNd and TH########################################################
+##############################################################################################################
+
+#This is actually the main function of the package and prepares everything to run the differential expression analysis.
+dds.LNv <- DESeqDataSetFromMatrix(countData = as.matrix(ds2_LNv_gene_expression), colData = colData.LNv,design = ~ ZT)
+
+#We will create the heat map with the normalized counts
+sampleDists <- dist(t(assay(dds.LNv)))#First we need the distance matrix 
+
+#Then we take this in a matrix and create the heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(dds.LNv$ZT,dds.LNv$rep,sep="_rep_")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+rdl.LNv <- rlog(dds.LNv) #do some transformation to see how the data looks like in terms of differences and if we should take any sample out.
+
+#now we can plot the PCA analysis
+plotPCA(rdl.LNv, intgroup=c("ZT"))
+
+data <- plotPCA(rdl.LNv, intgroup=c("ZT"), returnData=TRUE)#and also we can work with the plot by taking the data out and using ggplot2
+percentVar <- round(100 * attr(data, "percentVar"))
+
+ggplot(data, aes(PC1, PC2, color=ZT,label=name)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = name),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()+
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  labs(title="PC1 vs PC2")
+
+#We can even create 3D plots for all the PC we want
+ntop <- 1000
+rv <- rowVars(assay(rdl.LNv))
+select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+mat <- t(assay(rdl.LNv)[select, ])
+pc <- prcomp(mat)
+pc_df=as.data.frame(pc$x)
+pc_df=merge(pc_df,colData.LNv,by="row.names",all=T)
+rownames(pc_df)=pc_df$Row.names
+
+#This analyzes how much variation are we seeing in each PC
+fviz_eig(pc, addlabels = TRUE)
+p1=ggplot(pc_df, aes(PC1, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p1
+p2=ggplot(pc_df, aes(PC3, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p2
+#and both together
+grid.arrange(p1,p2, ncol=2) #rearranges the plots next to each other. 
+
+plot_ly(pc_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~ZT,colorscale = c('#FFE1A1', '#683531')) #creates 3D plot
+plot_ly(pc_df, x = ~PC2, y = ~PC3, z = ~PC4, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+
+#This is actually the main function of the package and prepares everything to run the differential expression analysis.
+dds.LNd <- DESeqDataSetFromMatrix(countData = as.matrix(ds2_LNd_gene_expression), colData = colData.LNd,design = ~ ZT)
+
+#We will create the heat map with the normalized counts
+#First we need the distance matrix 
+sampleDists <- dist(t(assay(dds.LNd)))
+
+#Then we take this in a matrix and create the heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(dds.LNd$ZT,dds.LNd$rep,sep="_rep_")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+#Now we do some transformation to see how the data looks like in terms of differences and if we should take any sample out.
+rdl.LNd <- rlog(dds.LNd) 
+
+#now we can plot the PCA analysis
+plotPCA(rdl.LNd, intgroup=c("ZT"))
+
+#and also we can work with the plot by taking the data out and using ggplot2
+data <- plotPCA(rdl.LNd, intgroup=c("ZT"), returnData=TRUE)
+percentVar <- round(100 * attr(data, "percentVar"))
+
+ggplot(data, aes(PC1, PC2, color=ZT,label=name)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = name),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()+
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  labs(title="PC1 vs PC2")
+
+#We can even create 3D plots for all the PC we want
+ntop <- 1000
+rv <- rowVars(assay(rdl.LNd))
+select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+mat <- t(assay(rdl.LNd)[select, ])
+pc <- prcomp(mat)
+pc_df=as.data.frame(pc$x)
+pc_df=merge(pc_df,colData.LNd,by="row.names",all=T)
+rownames(pc_df)=pc_df$Row.names
+
+#This analyze how much variation are we seeing in each PC
+fviz_eig(pc, addlabels = TRUE)
+
+p1=ggplot(pc_df, aes(PC1, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p1
+p2=ggplot(pc_df, aes(PC3, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p2
+grid.arrange(p1,p2, ncol=2) #rearranges plots next to each other. 
+#Creates 3D plots
+plot_ly(pc_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+plot_ly(pc_df, x = ~PC2, y = ~PC3, z = ~PC4, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+
+#This is actually the main function of the package and prepares everything to run the differential expression analysis.
+dds.TH <- DESeqDataSetFromMatrix(countData = as.matrix(ds2_TH_gene_expression), colData = colData.TH,design = ~ ZT)
+
+#We will create the heat map with the normalized counts
+#First we need the distnace matrix 
+sampleDists <- dist(t(assay(dds.TH)))
+
+#Then we take this in a matrix and create the heatmap
+sampleDistMatrix <- as.matrix(sampleDists)
+rownames(sampleDistMatrix) <- paste(dds.TH$ZT,dds.TH$rep,sep="_rep_")
+colnames(sampleDistMatrix) <- NULL
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+#This is another way to see this distances. 
+#We are doing a correlation between samples and then a clustering and a phylogram plot
+#d <- cor(assay(dds.TH), method="spearman")
+#hc <- hclust(dist(1-d))
+#plot.phylo(as.phylo(hc), type="p", edge.col=4, edge.width=3, show.node.label=TRUE, no.margin=TRUE)
+
+#Now we do some transformation to see how the data looks like in terms of differences and if we should take any sample out.
+rdl.TH <- rlog(dds.TH) 
+
+#now we can plot the PCA analysis
+plotPCA(rdl.TH, intgroup=c("ZT"))
+#and also we can work with the plot by taking the data out and using ggplot2
+data <- plotPCA(rdl.TH, intgroup=c("ZT"), returnData=TRUE)
+percentVar <- round(100 * attr(data, "percentVar"))
+
+ggplot(data, aes(PC1, PC2, color=ZT,label=name)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = name),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()+
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) +
+  labs(title="PC1 vs PC2")
+
+#We can even create 3D plots for all the PC we want
+ntop <- 1000
+rv <- rowVars(assay(rdl.TH))
+select <- order(rv, decreasing = TRUE)[seq_len(min(ntop, length(rv)))]
+mat <- t(assay(rdl.TH)[select, ])
+pc <- prcomp(mat)
+pc_df=as.data.frame(pc$x)
+pc_df=merge(pc_df,colData.TH,by="row.names",all=T)
+rownames(pc_df)=pc_df$Row.names
+
+#This analyze how much variation are we seeing in each PC
+fviz_eig(pc, addlabels = TRUE)
+
+p1=ggplot(pc_df, aes(PC1, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p1
+p2=ggplot(pc_df, aes(PC3, PC2, color=ZT,label=Row.names)) +
+  geom_point(size=3) +
+  geom_label_repel(aes(label = Row.names),
+                   box.padding   = 0.35, 
+                   point.padding = 0.5,
+                   segment.color = 'grey50') +
+  theme_minimal()
+p2
+
+#and both together
+grid.arrange(p1,p2, ncol=2)
+#We can do some fancy 3D plots also
+plot_ly(pc_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+plot_ly(pc_df, x = ~PC2, y = ~PC3, z = ~PC4, color = ~ZT,colorscale = c('#FFE1A1', '#683531'))
+
+
+#############################################################################################################################################
+#############################PART 6 DOING DIFF EXPRESSION ANALYSIS####################################################################################
+####################################################################################################################################################################################################
+
+dds.DN1 = DESeq(dds.DN1) #creates object dds.DN1 containing results of DESeq of dds.DN1
+
+#The resultNames is taking the names of the comparisons done by the DESeq function
+resultsNames(dds.DN1) #prints the names of the comparisons done. 
+
+
+res.ZT3vsZT15.DN1 <- results( dds.DN1, contrast = c("ZT","ZT3", "ZT15"),alpha=0.05) #use the results function to compare ZT3 vs ZT15 with an alpha value of 0.05. Sets results in object res.ZT3vsZT15.DN1
+head(res.ZT3vsZT15.DN1) #prints the first couple rows of object res.ZT3vsZT15.DN1
+
+summary(res.ZT3vsZT15.DN1) #gives summary of the results and tells basic statistics. 
+mcols(res.ZT3vsZT15.DN1)$description #prints descriptions
+
+hist(res.ZT3vsZT15.DN1$padj, breaks=100, col="skyblue", border="slateblue", main="") #creates histogram to show distribution of the padj
+plotMA(res.ZT3vsZT15.DN1,alpha=0.05) #In red everything with padj < 0.05
+
+
+res.ZT3vsZT15.DN1_df<-as.data.frame(res.ZT3vsZT15.DN1) #create data frame of results. 
+res.ZT3vsZT15.DN1_df=res.ZT3vsZT15.DN1_df[complete.cases(res.ZT3vsZT15.DN1_df),]
+res.ZT3vsZT15.DN1_df$transcript_name=rownames(res.ZT3vsZT15.DN1_df) #uses transcript name as row names in the header 
+head(res.ZT3vsZT15.DN1_df) #prints the first couple of rows to check if table was made correctly.
+
+
+keytypes(org.Dm.eg.db) #add the names of the genes
+
+#We have here the ENSEMBLE transcript names, so we will use that keytype
+genenames <- mapIds(org.Dm.eg.db,keys = rownames(dds.DN1),column = "SYMBOL",keytype="ENSEMBLTRANS") #creates object genenames with genenames 
+annotation_DN1 <- data.frame(gene_name = genenames, transcript_name=rownames(dds.DN1), row.names = rownames(dds.DN1), stringsAsFactors = FALSE) #annotates the data frame with gene names
+head(annotation_DN1) #prints table to see if gene names were added. 
+
+res.ZT3vsZT15.DN1_df=merge(res.ZT3vsZT15.DN1_df,annotation_DN1,by="transcript_name") #merges two data frames and sets as new object. 
+
+#Now I look for the ones that are changing with than Log2foldChange > 1
+sig_down=unique(res.ZT3vsZT15.DN1_df$gene_name[(res.ZT3vsZT15.DN1_df$padj<0.05&res.ZT3vsZT15.DN1_df$log2FoldChange<(-1))])
+sig_down
+
+sig_up=unique(res.ZT3vsZT15.DN1_df$gene_name[(res.ZT3vsZT15.DN1_df$padj<0.05&res.ZT3vsZT15.DN1_df$log2FoldChange>1)]) #finds the ones that are changing. 
+
+#I will see how some genes looks like
+#Normalized counts plus a pseudocount of 0.5 are shown by default
+plotCounts(dds.DN1, gene=which.min(res.ZT3vsZT15.DN1$padj), intgroup="ZT") #plots normalized count vs ZT group
+
+plotCounts(dds.DN1, gene="FBtr0077567", intgroup="ZT") #plots normalized count vs ZT group
+
+#We can do this in ggplot2
+d <- plotCounts(dds.DN1, gene="FBtr0077567", intgroup="ZT", returnData=TRUE) #creates objectd with the same data from the previous plots to plot in ggplot
+ggplot(d, aes(x=ZT, y=count)) + geom_point(position=position_jitter(w=0.1,h=0))
+
+trans_down=unique(res.ZT3vsZT15.DN1_df$transcript_name[(res.ZT3vsZT15.DN1_df$padj<0.05&res.ZT3vsZT15.DN1_df$log2FoldChange<(-1))])
+
+#We can do this for the genes differentially expressed.
+e=0
+for (i in trans_down[1:5]){ #creates for loop for the rest of the genes. Plots with CG32137 and CG14089 and puts the plots next to each other. 
+  d <- plotCounts(dds.DN1, gene=i, intgroup="ZT", returnData=T)
+  e=e+1 #this makes e greater each time
+  n=paste0("p",sep="_",e)
+ assign(n,ggplot(d, aes(x=ZT, y=count)) + geom_point(position=position_jitter(w=0.1,h=0)) + labs (title=(res.ZT3vsZT15.DN1_df$gene_name[res.ZT3vsZT15.DN1_df$transcript_name==i]))) 
+  }
+grid.arrange(p_4,p_2, ncol=2)
+
+################################For the clock genes like tim, per, clk
+head(annotation_DN1)
+#Get the transcript_names for each of them and set them as new objects. 
+tim_trans<-na.omit(annotation_DN1$transcript_name[annotation_DN1$gene_name=="tim"])
+c(tim_trans)
+Clk_trans<-na.omit(annotation_DN1$transcript_name[annotation_DN1$gene_name=="Clk"])
+per_trans<-na.omit(annotation_DN1$transcript_name[annotation_DN1$gene_name=="per"])
+
+#his loop will overwrite the previous plots you should change the names if you want to preserve the previous ones
+e=0
+for (i in tim_trans){
+  d <- plotCounts(dds.DN1, gene=i, intgroup="ZT", returnData=T)
+  e=e+1 #this makes e greater each time
+  n=paste0("p",sep="_",e)
+  t=paste0(annotation_DN1$gene_name[annotation_DN1$transcript_name==i],sep="_",i) #title for the plot
+ assign(n,ggplot(d, aes(x=ZT, y=count)) + geom_point(position=position_jitter(w=0.1,h=0)) + labs (title=t) )
+  }
+
+grid.arrange(p_1,p_2,p_4,p_5, ncol=2,top="Tim transcripts") #arranges plots next to each other. 
+
+#Notice that will overwrite everything if you want to preserve the plots you need to actually change the object names
+e=0 # for loop for getting the transcript names and plots their count vs ZT
+for (i in Clk_trans){
+  d <- plotCounts(dds.DN1, gene=i, intgroup="ZT", returnData=T)
+  e=e+1 #this makes e greater each time
+  n=paste0("p",sep="_",e)
+ t=paste0(annotation_DN1$gene_name[annotation_DN1$transcript_name==i],sep="_",i) #title for the plot
+ assign(n,ggplot(d, aes(x=ZT, y=count)) + geom_point(position=position_jitter(w=0.1,h=0)) + labs (title=t) )
+   }
+
+length(Clk_trans)
+grid.arrange(p_1,p_2,p_3, ncol=2)
+
+#Notice that will overwrite everything if you want to preserve the plots you need to actually change the object names
+e=0 #for loop for getting the transcript name and plotting their count vs ZT
+for (i in per_trans){
+  d <- plotCounts(dds.DN1, gene=i, intgroup="ZT", returnData=T)
+  e=e+1 #this makes e greater each time
+  n=paste0("p",sep="_",e)
+ t=paste0(annotation_DN1$gene_name[annotation_DN1$transcript_name==i],sep="_",i) #title for the plot
+ assign(n,(ggplot(d, aes(x=ZT, y=count, group=1) ) + geom_point(position=position_jitter(w=0.1,h=0))  + labs (title=t) ))
+}
+
+length(per_trans)
+grid.arrange(p_1,p_2, ncol=2) #arranges plots next to each other. 
+
+
+
+######################################################################################
+###############################7 Analyze Cycling genes. 
+#We already have the tables prepared
+head(DN1_gene_expression)
+#We need now to write them in an outside file and run the command. 
+#Note that you might be able to use the original data, this is just to keep on learning how to manage the data
+write.csv(DN1_gene_expression, file="cycDN1.csv", row.names=FALSE)
+
+DN1_cyc <- meta2d(infile="cycDN1.csv",filestyle="csv", timepoints=(rep(c(3,7,11,15,19,23),2)),outputFile=FALSE,outRawData=F) #sets the new file as this object. 
+head(DN1_cyc$ARS)
+head(DN1_cyc$JTK)
+head(DN1_cyc$LS)
+head(DN1_cyc$meta)
+
+
+#Clearly the "meta" is what we want. We can store it in other object to explore it in R or just write a table
+DN1_cyc_meta<- as.data.frame(DN1_cyc$meta)
+
+#We will add the gene-names and then export it
+DN1_cyc_meta$transcript_name=DN1_cyc_meta$CycID
+DN1_cyc_meta=merge(DN1_cyc_meta,annotation_DN1,by="transcript_name")
+
+#the tim, clk and per:
+DN1_cyc_meta[which(DN1_cyc_meta$gene_name %in% c("tim","Clk","per")),]
+
+#here we write the data
+write.table(x = DN1_cyc_meta, file="cycDN1_reults.txt",sep = "\t",row.names = F,col.names = T)
